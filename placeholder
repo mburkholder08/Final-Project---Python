@@ -1,0 +1,313 @@
+import numpy as np
+from sklearn.linear_model import LogisticRegression
+
+
+# Question 1
+# reading the file
+with open('The_Federalist_Papers.txt', 'r') as f:
+    text = f.readlines()
+
+
+# extracting all titles
+# a titles lies in between 'FEDERALIST. No. x' and the author name
+headers = ['FEDERALIST. No.', 'FEDERALIST No. ']
+
+
+# Question 2
+def getTitles(text):
+
+    # list of titles
+    titles = []
+
+    for n, line in enumerate(text):
+
+        # remove extra space characters
+        line = line.strip()
+
+        # pass empty lines
+        if line == '':
+            continue
+
+        # if this line is a header
+        if line[:15] in headers:
+
+            # initialize empty title
+            title = []
+
+            while True:
+
+                n += 1
+                part = text[n].strip()
+
+                if part != "":
+
+                    # get the number of the 1st line
+                    lineNum = n
+                    title = part
+                    break
+
+            # add title to the list
+            titles.append((lineNum, title))
+
+    return titles
+
+
+# Question 3
+def getNumPapers(text):
+
+    # set of paper numbers
+    papers = set()
+
+    for n, line in enumerate(text):
+
+        # remove extra space characters
+        line = line.strip()
+
+        # pass empty lines
+        if line == '':
+            continue
+
+        # if this line is a header
+        if line[:15] in headers:
+
+            _, _, number = line.split()
+            number = int(number)
+
+            # add the number to the set, duplicates are eliminated
+            papers.add(number)
+
+    return len(papers)
+
+
+# helper function
+def divideText(text):
+    """ divide the text into papers with there authors """
+
+    papers = {}
+
+    for n, line in enumerate(text):
+
+        # remove extra space characters
+        line = line.strip()
+
+        # pass empty lines
+        if line == '':
+            continue
+
+        authorFound = False
+
+        # if this line is a header
+        if line[:15] in headers:
+
+            # get paper number (id)
+            _, _, number = line.split()
+            number = int(number)
+
+            # search for author name
+            while not authorFound:
+
+                n += 1
+                part = text[n].strip()
+
+                # check if its an author
+                if part.isupper() and part:
+
+                    # get the author
+                    author = part
+
+                    # set the author finding status to 1
+                    authorFound = True
+
+                    n += 1
+                    article = ""
+
+                    # while we did not bump into the next article
+                    while True:
+
+                        n += 1
+
+                        # exit condition 1
+                        if n == len(text):
+                            break
+
+                        part = text[n].strip()
+
+                        # exit condition 2
+                        if part[:15] in headers:
+                            break
+
+                        article += part + ' '
+
+                    # add the article to the dictionary
+                    papers[number] = (author, article)
+
+    return papers
+
+
+def getCountAndAvg(papers):
+
+    # create a counting dictionary
+    count = {'HAMILTON': [], 'MADISON': []}
+
+    for author, paper in papers.values():
+        if author in count:
+            count[author].append(len(paper.strip().split()))
+
+    # Question 4
+    # print the author count
+
+    ham_count = len(count['HAMILTON'])
+    mad_count = len(count['MADISON'])
+
+    print(f'\nHAMILTON clearly authored {ham_count} papers.')
+    print(f'MADISON clearly authored {mad_count} papers.\n')
+
+    # Question 5
+    # compute averages
+    ham_avg = sum(count['HAMILTON'])/ham_count
+    mad_avg = sum(count['MADISON'])/mad_count
+
+    # print the author average
+    print(f'HAMILTON wrote articles with an average of {ham_avg:.2f} words.')
+    print(f'MADISON wrote articles with an average of {mad_avg:.2f} words.')
+
+    return count
+
+
+def fit(papers):
+    """
+    fits a logistic regression model
+    """
+
+    # filter papers
+    articles = {'HAMILTON': [], 'MADISON': []}
+    num_articles = 0
+
+    for author, paper in papers.values():
+        if author in articles:
+            articles[author].append(paper)
+
+            # increment the number of articles
+            num_articles += 1
+
+    # initialize matrix
+    X = np.zeros((num_articles, 10))
+    Y = np.zeros(num_articles)
+
+    # variables
+    var = ["by", "enough", "from", "this", "that",
+           "to", "upon", "while", "whilst"]
+
+    # get the variables
+    n = 0
+    for author, texts in articles.items():
+
+        for text in texts:
+
+            text = text.lower().strip().split()
+
+            # get article length
+            X[n, 0] = len(text)
+
+            # word counts
+            for m, v in enumerate(var):
+                X[n, m+1] = text.count(v)
+
+            # set the label
+            if author == "HAMILTON":
+                Y[n] = 0
+            else:
+                Y[n] = 1
+
+            # increment row
+            n += 1
+
+    # fit a logistic regression model
+    model = LogisticRegression(solver='liblinear')
+    model.fit(X, Y)
+
+    return model
+
+
+def predict_proba(papers, model):
+    """
+    predict using a logistic regression model
+    """
+
+    # filter papers
+    articles = {'HAMILTON OR MADISON': []}
+    num_articles, ids = 0, []
+
+    for number, author_paper in papers.items():
+        author, paper = author_paper
+
+        if author in articles:
+            articles[author].append(paper)
+
+            # increment the number of articles
+            num_articles += 1
+            ids.append(number)
+
+    # initialize matrix
+    X = np.zeros((num_articles, 10))
+
+    # variables
+    var = ["by", "enough", "from", "this", "that",
+           "to", "upon", "while", "whilst"]
+
+    # get the variables
+    for author, texts in articles.items():
+
+        for n, text in enumerate(texts):
+
+            text = text.lower().strip().split()
+
+            # get article length
+            X[n, 0] = len(text)
+
+            # word counts
+            for m, v in enumerate(var):
+                X[n, m+1] = text.count(v)
+
+    Y = model.predict_proba(X)
+
+    return ids, Y
+
+
+if __name__ == '__main__':
+
+    # get titles and line numbers
+    titles = getTitles(text)
+
+    print('First 10 titles:')
+    for i in range(10):
+        lineNum, title = titles[i]
+        print('  ', lineNum, title)
+
+    # get the number of distinct paper No's
+    numPapers = getNumPapers(text)
+
+    # the number of articles
+    print(f'\nThe number of articles is {len(titles)}.')
+    print(f"The number of distinct paper No.'s is {numPapers}.")
+
+    print(f"Thus, there is/are {len(titles) - numPapers} duplicate(s).")
+
+    # get the dict of papers
+    papers = divideText(text)
+    count = getCountAndAvg(papers)
+
+    # fit the model
+    model = fit(papers)
+
+    # print the results
+    print('\nModel Parameters')
+    print('Model intercept =', model.intercept_)
+    print('Model coefficients =', model.coef_)
+
+    ids, pred = predict_proba(papers, model)
+
+    # printing the probabilities
+    print('\nPrediction probabilities:')
+    for number, p in zip(ids, pred):
+        print(f'- FEDERALIST. No. {number} was written by HAMILTON with P={p[0]:.2f}, or by MADISON with P={p[1]:.2f}.')
